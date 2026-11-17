@@ -1,10 +1,31 @@
-# Conformal prediction on the Texas power grid
+# Implementing conformal prediction from the research paper
 
-I implemented split conformal prediction and conformalized quantile regression
-(CQR) from scratch, checked the coverage guarantee by simulation, and tested it
-on hourly ERCOT electricity demand from 2020 to 2024. On shuffled data it hit
-90.0% coverage. Run in time order the way it would be deployed, overall coverage
-was 89.1%, but single months dropped as low as 44.8%.
+An implementation of Angelopoulos and Bates, *A Gentle Introduction to
+Conformal Prediction and Distribution-Free Uncertainty Quantification*
+(arXiv 2107.07511), and of conformalized quantile regression from Romano,
+Patterson and Candes (NeurIPS 2019), tested on real ERCOT electricity demand.
+
+The paper's central result is a finite-sample, distribution-free guarantee: for
+any model and any data distribution, if the calibration and test points are
+exchangeable, the conformal interval contains the true value with probability
+at least 1 - alpha. I worked through the proof (the rank argument, why the
+quantile is `ceil((n+1)(1-alpha))`, and why coverage for a fixed calibration set
+is Beta distributed) until I could derive it myself. My write-up is in the math
+section below. Then I implemented the methods without a conformal library,
+checked each claim numerically, and tested what happens on real data when
+exchangeability fails.
+
+| Claim from the papers | How I checked it | Result |
+|---|---|---|
+| Coverage is at least 1 - alpha and below 1 - alpha + 1/(n+1) | 5,000 simulated trials with skewed scores | 0.898 against a 0.90 target, 0.5 standard errors off |
+| Coverage for one calibration set follows Beta(k, n+1-k) | 2,000 calibration sets, 500 test points each | mean 0.902, sd 0.032 vs 0.901, 0.030 from the formula |
+| The guarantee holds for any model, unlike a Gaussian interval | 200 random splits of the diabetes data | gradient boosting: 91.0% conformal vs 52.0% Gaussian |
+| CQR adapts the interval width to difficulty | one split, binned by predicted uncertainty | widths 152 to 262 vs a constant 224 |
+| All of it requires exchangeability | 43,848 hours of ERCOT demand, 2020-2024 | 90.0% shuffled; 89.1% in time order, with one month at 44.8% |
+
+The scores, the quantile rule, the intervals and the CQR conformal step are my
+own NumPy code; the base models are scikit-learn. Unit tests check the quantile
+rule against examples I worked by hand.
 
 `docs/index.html` is an interactive dashboard of the Texas results. It runs
 offline, and it is also at
