@@ -1,0 +1,534 @@
+<title>When 90% Isn't 90%</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap">
+<style>
+/* Layout: one column on pure black. Controls first, four live numbers, then
+   three panels that all react to the controls: monthly coverage (click a
+   month), that month hour by hour, and a "why it breaks" pair. */
+:root {
+  --bg: #000;
+  --panel: #0b0e12;
+  --panel-2: #12171d;
+  --line: #1d242c;
+  --ink: #eaf0f4;
+  --ink-dim: #97a4af;
+  --ink-mute: #65727d;
+  --cyan: #35e0d0;
+  --cyan-soft: rgba(53, 224, 208, 0.14);
+  --hot: #ff5b3a;
+  --ghost: #6b7883;
+  --target: rgba(234, 240, 244, 0.55);
+  --font-display: 'Space Grotesk', 'Helvetica Neue', Arial, sans-serif;
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  line-height: 1.55;
+  margin: 0 auto;
+  max-width: 1040px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 34px 48px;
+}
+h1, h2 { font-family: var(--font-display); margin: 0; text-wrap: balance; }
+h1 { font-size: clamp(1.9rem, 5vw, 2.8rem); letter-spacing: -0.02em; line-height: 1.08; }
+h2 { font-size: 1.08rem; font-weight: 600; letter-spacing: -0.005em; }
+p { margin: 0; color: var(--ink-dim); max-width: 70ch; }
+button, select, input { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+
+.eyebrow {
+  font-family: var(--font-mono); font-size: 0.72rem; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--cyan); margin-bottom: 12px;
+}
+.lede { margin-top: 14px; font-size: 1.02rem; }
+
+.panel {
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: 14px; padding: 20px; margin-top: 18px; min-width: 0;
+}
+.panel > p { margin-top: 6px; font-size: 0.9rem; }
+
+/* controls */
+.controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 22px 28px; }
+.ctl { min-width: 0; }
+.ctl-label {
+  font-family: var(--font-mono); font-size: 0.68rem; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--ink-mute); margin-bottom: 10px; display: block;
+}
+.slider-row { display: flex; align-items: center; gap: 14px; }
+input[type="range"] { flex: 1; min-width: 0; accent-color: var(--cyan); height: 4px; cursor: pointer; }
+output {
+  font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+  font-size: 1.5rem; font-weight: 700; color: var(--cyan); min-width: 3.6ch; text-align: right;
+}
+.seg { display: flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--panel-2); }
+.seg button {
+  flex: 1; padding: 9px 10px; border: 0; background: transparent; cursor: pointer;
+  font-size: 0.8rem; color: var(--ink-dim); line-height: 1.25;
+}
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed="true"] { background: var(--cyan-soft); color: var(--cyan); font-weight: 600; }
+.win-row { margin-top: 10px; font-size: 0.8rem; color: var(--ink-dim); display: flex; align-items: center; gap: 8px; }
+select {
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px;
+  padding: 4px 8px; font-family: var(--font-mono); font-size: 0.78rem;
+}
+select:disabled { opacity: 0.4; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip {
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: 999px;
+  padding: 6px 12px; font-size: 0.78rem; cursor: pointer; color: var(--ink-dim);
+}
+.chip:hover { border-color: var(--cyan); color: var(--ink); }
+
+/* live numbers */
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-top: 18px; }
+.tile { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; min-width: 0; }
+.tile-label { font-family: var(--font-mono); font-size: 0.66rem; letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-mute); }
+.tile-value { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 2rem; font-weight: 700; line-height: 1.15; margin-top: 4px; }
+.tile-note { font-size: 0.76rem; color: var(--ink-dim); margin-top: 2px; font-variant-numeric: tabular-nums; }
+.good { color: var(--cyan); }
+.bad { color: var(--hot); }
+
+/* charts */
+.head-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+.nav { display: flex; gap: 8px; }
+.nav button {
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px;
+  padding: 5px 12px; cursor: pointer; font-family: var(--font-mono); font-size: 0.78rem; color: var(--ink-dim);
+}
+.nav button:hover { border-color: var(--cyan); color: var(--ink); }
+.chart-scroll { overflow-x: auto; margin-top: 10px; position: relative; }
+.chart-wrap { position: relative; }
+svg.chart { display: block; width: 100%; height: auto; min-width: 640px; }
+svg.chart.small { min-width: 420px; }
+.axis { font-family: var(--font-mono); font-size: 11px; fill: var(--ink-mute); }
+.val { font-family: var(--font-mono); font-size: 11px; fill: var(--ink-dim); }
+.grid { stroke: var(--line); stroke-width: 1; }
+.legend { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 10px; }
+.legend span { display: flex; align-items: center; gap: 7px; font-family: var(--font-mono); font-size: 0.72rem; color: var(--ink-dim); }
+.sw { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+.sw.ln { height: 3px; border-radius: 2px; width: 16px; }
+.sw.band { border-radius: 3px; background: var(--cyan-soft); border: 1px solid var(--cyan); }
+.readout { margin-top: 10px; font-family: var(--font-mono); font-size: 0.78rem; color: var(--ink-dim); font-variant-numeric: tabular-nums; }
+.readout b { color: var(--ink); }
+
+.tip {
+  position: absolute; display: none; pointer-events: none; z-index: 5;
+  background: #05070a; border: 1px solid var(--line); border-radius: 8px;
+  padding: 7px 10px; font-family: var(--font-mono); font-size: 0.72rem; color: var(--ink);
+  white-space: nowrap; box-shadow: 0 6px 20px rgba(0,0,0,0.6);
+}
+.pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; margin-top: 4px; }
+.pair h3 { font-family: var(--font-display); font-size: 0.92rem; font-weight: 600; margin: 14px 0 0; }
+.pair p { font-size: 0.82rem; margin-top: 3px; }
+
+footer { margin-top: 24px; font-size: 0.8rem; color: var(--ink-mute); max-width: 76ch; }
+</style>
+<!--HEAD-END-->
+<main>
+<div class="eyebrow">Conformal prediction &middot; ERCOT hourly demand &middot; 2020&ndash;2024</div>
+<h1>When 90% isn't 90%</h1>
+<p class="lede">
+A conformal prediction interval promises to contain the true value 90% of the
+time. The promise holds if the data is exchangeable, which roughly means its
+order doesn't matter. Hourly electricity demand doesn't meet that condition.
+I trained a model on early-2020 Texas grid data, calibrated its intervals once
+on late 2020, and let it predict through 2024. Move the slider, change how the
+interval is calibrated, and see what survives.
+</p>
+
+<section class="panel controls" aria-label="Controls">
+  <div class="ctl">
+    <label class="ctl-label" for="target">Promised coverage</label>
+    <div class="slider-row">
+      <input type="range" id="target" min="50" max="99" value="90" step="1">
+      <output id="targetOut" for="target">90%</output>
+    </div>
+  </div>
+  <div class="ctl">
+    <span class="ctl-label" id="modeLabel">How the interval is calibrated</span>
+    <div class="seg" role="group" aria-labelledby="modeLabel">
+      <button type="button" id="modeStatic" aria-pressed="true">Calibrate once<br>(late 2020)</button>
+      <button type="button" id="modeRecal" aria-pressed="false">Recalibrate<br>every month</button>
+    </div>
+    <div class="win-row">
+      <label for="win">Recalibrate on the last</label>
+      <select id="win" disabled>
+        <option value="720">30 days</option>
+        <option value="1440">60 days</option>
+        <option value="2160" selected>90 days</option>
+      </select>
+    </div>
+  </div>
+  <div class="ctl">
+    <span class="ctl-label">Jump to a month</span>
+    <div class="chips">
+      <button type="button" class="chip" data-jump="2021-02">Feb 2021 &middot; Winter Storm Uri</button>
+      <button type="button" class="chip" data-jump="2023-08">Aug 2023</button>
+      <button type="button" class="chip" data-jump="2024-06">Jun 2024</button>
+    </div>
+  </div>
+</section>
+
+<div class="tiles" aria-live="polite">
+  <div class="tile">
+    <div class="tile-label">Overall coverage, 2021&ndash;24</div>
+    <div class="tile-value" id="tOverall">&ndash;</div>
+    <div class="tile-note" id="tOverallNote">&nbsp;</div>
+  </div>
+  <div class="tile">
+    <div class="tile-label">Winter Storm Uri, Feb 10&ndash;20 2021</div>
+    <div class="tile-value" id="tUri">&ndash;</div>
+    <div class="tile-note" id="tUriNote">&nbsp;</div>
+  </div>
+  <div class="tile">
+    <div class="tile-label">Worst single month</div>
+    <div class="tile-value" id="tWorst">&ndash;</div>
+    <div class="tile-note" id="tWorstNote">&nbsp;</div>
+  </div>
+  <div class="tile">
+    <div class="tile-label">Average interval width</div>
+    <div class="tile-value" id="tWidth" style="color:var(--ink)">&ndash;</div>
+    <div class="tile-note">total width, low end to high end</div>
+  </div>
+</div>
+
+<section class="panel">
+  <h2>Coverage, month by month</h2>
+  <p>One dot per month: the share of that month's hours that landed inside the
+  interval. Red dots fell short of the promise. The gray line shows what the
+  other calibration mode would have scored. Click any month to look at it hour by hour.</p>
+  <div class="chart-scroll"><div class="chart-wrap">
+    <svg class="chart" id="chartA" viewBox="0 0 980 300" role="img" aria-label="Monthly coverage from 2021 to 2024"></svg>
+    <div class="tip" id="tipA"></div>
+  </div></div>
+  <div class="legend">
+    <span><i class="sw" style="background:var(--cyan)"></i>month met the promise</span>
+    <span><i class="sw" style="background:var(--hot)"></i>month fell short</span>
+    <span><i class="sw ln" style="background:var(--ghost)"></i>the other calibration mode</span>
+    <span><i class="sw ln" style="background:var(--target)"></i>promised coverage</span>
+  </div>
+</section>
+
+<section class="panel">
+  <div class="head-row">
+    <div>
+      <h2 id="hourTitle">Hour by hour</h2>
+      <p id="hourSub">&nbsp;</p>
+    </div>
+    <div class="nav">
+      <button type="button" id="prevM" aria-label="Previous month">&larr; prev</button>
+      <button type="button" id="nextM" aria-label="Next month">next &rarr;</button>
+    </div>
+  </div>
+  <div class="chart-scroll"><div class="chart-wrap">
+    <svg class="chart" id="chartB" viewBox="0 0 980 330" role="img" aria-label="Hourly demand against the prediction interval for the selected month"></svg>
+    <div class="tip" id="tipB"></div>
+  </div></div>
+  <div class="legend">
+    <span><i class="sw band"></i>the interval</span>
+    <span><i class="sw ln" style="background:var(--cyan)"></i>demand, inside</span>
+    <span><i class="sw ln" style="background:var(--hot)"></i>demand, outside</span>
+  </div>
+  <div class="readout" id="hourRead" aria-live="polite"></div>
+</section>
+
+<section class="panel">
+  <h2>Why it breaks</h2>
+  <p>Two separate problems, and recalibrating only touches one of them.</p>
+  <div class="pair">
+    <div>
+      <h3>1. The model falls behind</h3>
+      <p>Average gap between real demand and the model's prediction. It was
+      trained on 2020 only, so as Texas demand grew the predictions stayed put.</p>
+      <div class="chart-scroll"><svg class="chart small" id="chartC1" viewBox="0 0 480 230" role="img" aria-label="Average prediction bias by year"></svg></div>
+    </div>
+    <div>
+      <h3>2. The seasons differ</h3>
+      <p>Coverage averaged by calendar month. The interval was sized on autumn
+      errors, and the summer errors are bigger.</p>
+      <div class="chart-scroll"><svg class="chart small" id="chartC2" viewBox="0 0 480 230" role="img" aria-label="Coverage by calendar month"></svg></div>
+    </div>
+  </div>
+</section>
+
+<footer>
+The model is gradient boosting on calendar features only (hour, weekday, month,
+weekend) with no weather input. That makes it a weak forecaster, which is why
+the intervals are so wide. Conformal prediction guarantees validity under its
+assumptions, not usefulness. Monthly recalibration is a heuristic and carries
+no coverage guarantee of its own. Data: EIA Cleaned Hourly Electricity Demand
+(Ruggles et&nbsp;al.), ERCOT region, CC&nbsp;BY&nbsp;4.0.
+</footer>
+</main>
+
+<script>
+const D = __DATA_JSON__;
+
+const MN = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const $ = id => document.getElementById(id);
+const pct = v => (v * 100).toFixed(1) + '%';
+const gw = v => (v / 1000).toFixed(1);
+
+/* ---------- data prep ---------- */
+const months = D.months;
+const N = D.actual.length;
+const absErr = new Float64Array(N);
+for (let i = 0; i < N; i++) absErr[i] = Math.abs(D.actual[i] - D.pred[i]);
+const calErr = Float64Array.from(D.calErr);
+const OFF = calErr.length;
+const allErr = new Float64Array(OFF + N);
+allErr.set(calErr); allErr.set(absErr, OFF);
+const calSorted = Float64Array.from(calErr).sort();
+const uriMonth = months.findIndex(m => m.y === 2021 && m.m === 2);
+const monthLabel = m => MN[m.m - 1] + ' ' + m.y;
+
+const state = { t: 90, mode: 'static', W: 2160, sel: uriMonth };
+
+/* the conformal quantile: the ceil((n+1)(1-alpha))-th smallest score */
+function quant(sorted, t) {
+  const n = sorted.length;
+  const rank = Math.ceil((n + 1) * t / 100 - 1e-9);
+  return rank > n ? Infinity : sorted[rank - 1];
+}
+
+function monthQs(mode) {
+  return months.map(m => {
+    if (mode === 'static') return quant(calSorted, state.t);
+    const w = allErr.slice(OFF + m.start - state.W, OFF + m.start).sort();
+    return quant(w, state.t);
+  });
+}
+
+function evaluate(qs) {
+  const covCount = [], covFrac = [];
+  let hit = 0, wsum = 0;
+  months.forEach((m, i) => {
+    let c = 0;
+    for (let j = m.start; j < m.end; j++) if (absErr[j] <= qs[i]) c++;
+    covCount.push(c); covFrac.push(c / (m.end - m.start));
+    hit += c; wsum += 2 * qs[i] * (m.end - m.start);
+  });
+  let uriHit = 0;
+  for (let j = D.uri[0]; j <= D.uri[1]; j++) if (absErr[j] <= qs[uriMonth]) uriHit++;
+  let worst = 0;
+  covFrac.forEach((c, i) => { if (c < covFrac[worst]) worst = i; });
+  return { qs, covCount, covFrac, overall: hit / N, uri: uriHit / (D.uri[1] - D.uri[0] + 1), worst, width: wsum / N };
+}
+
+/* ---------- helpers ---------- */
+function placeTip(tip, wrap, e, html) {
+  tip.innerHTML = html; tip.style.display = 'block';
+  const box = wrap.getBoundingClientRect();
+  let left = e.clientX - box.left + 14;
+  if (left > box.width - tip.offsetWidth - 6) left = e.clientX - box.left - tip.offsetWidth - 14;
+  tip.style.left = Math.max(4, left) + 'px';
+  tip.style.top = Math.max(4, e.clientY - box.top - 12) + 'px';
+}
+function svgX(svg, e, W) {
+  const b = svg.getBoundingClientRect();
+  return (e.clientX - b.left) * (W / b.width);
+}
+
+/* ---------- chart A: monthly coverage ---------- */
+function drawA(cur, other) {
+  const svg = $('chartA'), W = 980, H = 300, pl = 46, pr = 14, pt = 14, pb = 30;
+  const pw = W - pl - pr, ph = H - pt - pb;
+  const minC = Math.min(...cur.covFrac, ...other.covFrac);
+  const yMin = Math.max(0, Math.floor((minC - 0.04) * 10) / 10), yMax = 1;
+  const xs = i => pl + (i / (months.length - 1)) * pw;
+  const ys = v => pt + ph - ((v - yMin) / (yMax - yMin)) * ph;
+  const target = state.t / 100;
+  let s = '';
+  for (let g = Math.ceil(yMin * 10) / 10; g <= 1.0001; g += 0.1) {
+    s += `<line class="grid" x1="${pl}" y1="${ys(g)}" x2="${W - pr}" y2="${ys(g)}"/>`;
+    s += `<text class="axis" x="${pl - 8}" y="${ys(g) + 4}" text-anchor="end">${Math.round(g * 100)}%</text>`;
+  }
+  months.forEach((m, i) => {
+    if (m.m === 1) {
+      s += `<line x1="${xs(i)}" y1="${pt}" x2="${xs(i)}" y2="${pt + ph}" stroke="var(--line)" stroke-dasharray="2 4"/>`;
+      s += `<text class="axis" x="${xs(i) + 4}" y="${H - 8}">${m.y}</text>`;
+    }
+  });
+  s += `<rect x="${xs(state.sel) - 9}" y="${pt}" width="18" height="${ph}" rx="4" fill="var(--cyan)" opacity="0.10"/>`;
+  s += `<line x1="${pl}" y1="${ys(target)}" x2="${W - pr}" y2="${ys(target)}" stroke="var(--target)" stroke-width="1.5" stroke-dasharray="6 4"/>`;
+  s += `<path d="M${other.covFrac.map((c, i) => xs(i).toFixed(1) + ' ' + ys(c).toFixed(1)).join(' L')}" fill="none" stroke="var(--ghost)" stroke-width="1.5" stroke-dasharray="3 3" opacity="0.8"/>`;
+  s += `<path d="M${cur.covFrac.map((c, i) => xs(i).toFixed(1) + ' ' + ys(c).toFixed(1)).join(' L')}" fill="none" stroke="var(--cyan)" stroke-width="1.5" opacity="0.35"/>`;
+  cur.covFrac.forEach((c, i) => {
+    const bad = c < target;
+    s += `<circle cx="${xs(i)}" cy="${ys(c)}" r="${i === state.sel ? 6 : 4}" fill="${bad ? 'var(--hot)' : 'var(--cyan)'}" stroke="${i === state.sel ? '#fff' : '#000'}" stroke-width="${i === state.sel ? 2 : 1.5}"/>`;
+  });
+  svg.innerHTML = s;
+
+  const tip = $('tipA');
+  const idx = e => Math.max(0, Math.min(months.length - 1, Math.round((svgX(svg, e, W) - pl) / pw * (months.length - 1))));
+  svg.style.cursor = 'pointer';
+  svg.onmousemove = e => {
+    const i = idx(e);
+    placeTip(tip, svg.parentElement, e,
+      `<b>${monthLabel(months[i])}</b><br>this mode: ${pct(cur.covFrac[i])} &plusmn;${gw(cur.qs[i])} GW<br>other mode: ${pct(other.covFrac[i])} &plusmn;${gw(other.qs[i])} GW`);
+  };
+  svg.onmouseleave = () => { tip.style.display = 'none'; };
+  svg.onclick = e => { state.sel = idx(e); render(); };
+}
+
+/* ---------- chart B: one month, hour by hour ---------- */
+function drawB(cur) {
+  const svg = $('chartB'), W = 980, H = 330, pl = 52, pr = 14, pt = 14, pb = 30;
+  const pw = W - pl - pr, ph = H - pt - pb;
+  const m = months[state.sel], n = m.end - m.start, q = cur.qs[state.sel];
+  let lo = Infinity, hi = -Infinity;
+  for (let j = m.start; j < m.end; j++) {
+    lo = Math.min(lo, D.actual[j], D.pred[j] - q); hi = Math.max(hi, D.actual[j], D.pred[j] + q);
+  }
+  const step = (hi - lo) > 60000 ? 20000 : (hi - lo) > 30000 ? 10000 : 5000;
+  lo = Math.floor(lo / step) * step; hi = Math.ceil(hi / step) * step;
+  const xs = i => pl + (i / (n - 1)) * pw;
+  const ys = v => pt + ph - ((v - lo) / (hi - lo)) * ph;
+  let s = `<defs><filter id="glow" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>`;
+  for (let g = lo; g <= hi; g += step) {
+    s += `<line class="grid" x1="${pl}" y1="${ys(g)}" x2="${W - pr}" y2="${ys(g)}"/>`;
+    s += `<text class="axis" x="${pl - 8}" y="${ys(g) + 4}" text-anchor="end">${(g / 1000).toFixed(0)} GW</text>`;
+  }
+  for (let d = 1; (d - 1) * 24 < n; d += 7) {
+    s += `<text class="axis" x="${xs((d - 1) * 24)}" y="${H - 8}" text-anchor="middle">${MN[m.m - 1]} ${d}</text>`;
+  }
+  let up = [], dn = [];
+  for (let i = 0; i < n; i++) {
+    const p = D.pred[m.start + i];
+    up.push(xs(i).toFixed(1) + ' ' + ys(p + q).toFixed(1));
+    dn.push(xs(i).toFixed(1) + ' ' + ys(p - q).toFixed(1));
+  }
+  s += `<path d="M${up.join(' L')} L${dn.reverse().join(' L')} Z" fill="var(--cyan-soft)" stroke="var(--cyan)" stroke-opacity="0.4" stroke-width="1"/>`;
+
+  let seg = '', segMiss = null, segs = '';
+  const flush = () => {
+    if (!seg) return;
+    segs += segMiss
+      ? `<path d="${seg}" fill="none" stroke="var(--hot)" stroke-width="2.4" stroke-linejoin="round" filter="url(#glow)"/>`
+      : `<path d="${seg}" fill="none" stroke="var(--cyan)" stroke-width="1.8" stroke-linejoin="round"/>`;
+    seg = '';
+  };
+  let misses = 0;
+  for (let i = 0; i < n; i++) {
+    const j = m.start + i, miss = absErr[j] > q;
+    if (miss) misses++;
+    if (segMiss === null || miss !== segMiss) {
+      flush(); segMiss = miss;
+      const k = Math.max(0, i - 1);
+      seg = `M${xs(k).toFixed(1)} ${ys(D.actual[m.start + k]).toFixed(1)}`;
+    }
+    seg += ` L${xs(i).toFixed(1)} ${ys(D.actual[j]).toFixed(1)}`;
+  }
+  flush();
+  s += segs;
+  svg.innerHTML = s;
+
+  $('hourTitle').textContent = monthLabel(m) + (state.sel === uriMonth ? ' · Winter Storm Uri' : '');
+  $('hourSub').textContent = state.mode === 'static'
+    ? 'The interval was sized once, on October to December 2020.'
+    : `The interval was resized at the start of this month from the previous ${state.W / 24} days of errors.`;
+  $('hourRead').innerHTML = `<b>${n - misses}</b> of <b>${n}</b> hours inside the interval (<b>${pct((n - misses) / n)}</b>). Interval: prediction &plusmn;<b>${gw(q)} GW</b>.`;
+
+  const tip = $('tipB');
+  svg.onmousemove = e => {
+    const i = Math.max(0, Math.min(n - 1, Math.round((svgX(svg, e, W) - pl) / pw * (n - 1))));
+    const j = m.start + i, miss = absErr[j] > q;
+    const day = Math.floor(i / 24) + 1, hh = String(i % 24).padStart(2, '0');
+    placeTip(tip, svg.parentElement, e,
+      `<b>${MN[m.m - 1]} ${day}, ${hh}:00</b><br>demand ${gw(D.actual[j])} GW<br>interval ${gw(D.pred[j] - q)} to ${gw(D.pred[j] + q)} GW<br>${miss ? '<b style="color:var(--hot)">outside</b>' : 'inside'}`);
+  };
+  svg.onmouseleave = () => { tip.style.display = 'none'; };
+}
+
+/* ---------- chart C: why it breaks ---------- */
+function bars(svg, items, opts) {
+  const W = 480, H = 230, pl = 40, pr = 10, pt = 20, pb = 28;
+  const pw = W - pl - pr, ph = H - pt - pb;
+  const ys = v => pt + ph - ((v - opts.min) / (opts.max - opts.min)) * ph;
+  let s = '';
+  opts.ticks.forEach(g => {
+    s += `<line class="grid" x1="${pl}" y1="${ys(g)}" x2="${W - pr}" y2="${ys(g)}"/>`;
+    s += `<text class="axis" x="${pl - 6}" y="${ys(g) + 4}" text-anchor="end">${opts.fmtTick(g)}</text>`;
+  });
+  const slot = pw / items.length, bw = Math.min(26, slot * 0.6);
+  items.forEach((it, i) => {
+    const cx = pl + slot * (i + 0.5), y0 = ys(0), y1 = ys(it.v);
+    const top = Math.min(y0, y1), h = Math.max(1, Math.abs(y1 - y0));
+    s += `<g><title>${it.tip}</title><rect x="${cx - bw / 2}" y="${top}" width="${bw}" height="${h}" rx="3" fill="${it.color}"/></g>`;
+    s += `<text class="val" x="${cx}" y="${top - 5}" text-anchor="middle">${it.label}</text>`;
+    s += `<text class="axis" x="${cx}" y="${H - 8}" text-anchor="middle">${it.x}</text>`;
+  });
+  if (opts.line != null) s += `<line x1="${pl}" y1="${ys(opts.line)}" x2="${W - pr}" y2="${ys(opts.line)}" stroke="var(--target)" stroke-width="1.5" stroke-dasharray="6 4"/>`;
+  svg.innerHTML = s;
+}
+
+const yearBias = [2021, 2022, 2023, 2024].map(y => {
+  let sum = 0, cnt = 0;
+  months.forEach(m => { if (m.y === y) for (let j = m.start; j < m.end; j++) { sum += D.actual[j] - D.pred[j]; cnt++; } });
+  return { y, v: sum / cnt };
+});
+function drawC1() {
+  const mx = Math.max(...yearBias.map(b => b.v), 1000) * 1.2;
+  bars($('chartC1'), yearBias.map(b => ({
+    v: b.v, x: b.y, color: 'var(--cyan)',
+    label: (b.v >= 0 ? '+' : '') + gw(b.v), tip: `${b.y}: average gap ${gw(b.v)} GW`
+  })), { min: 0, max: mx, ticks: [0, mx / 2, mx].map(v => Math.round(v / 1000) * 1000), fmtTick: v => (v / 1000).toFixed(0) + ' GW', line: null });
+}
+function drawC2(cur) {
+  const cm = Array.from({ length: 12 }, () => ({ c: 0, n: 0 }));
+  months.forEach((m, i) => { cm[m.m - 1].c += cur.covCount[i]; cm[m.m - 1].n += m.end - m.start; });
+  const target = state.t / 100;
+  bars($('chartC2'), cm.map((a, i) => {
+    const v = a.c / a.n;
+    return { v, x: MN[i][0], color: v < target ? 'var(--hot)' : 'var(--cyan)', label: Math.round(v * 100), tip: `${MN[i]}: ${pct(v)} covered, averaged over 2021–24` };
+  }), { min: 0, max: 1, ticks: [0, 0.25, 0.5, 0.75, 1], fmtTick: v => Math.round(v * 100) + '%', line: target });
+}
+
+/* ---------- tiles + render ---------- */
+function setTile(id, noteId, value, cls, note) {
+  const el = $(id); el.textContent = value; el.className = 'tile-value ' + cls;
+  if (noteId) $(noteId).textContent = note;
+}
+function render() {
+  const t = state.t / 100;
+  const a = evaluate(monthQs(state.mode)), b = evaluate(monthQs(state.mode === 'static' ? 'recal' : 'static'));
+  const cls = v => (v >= t - 0.005 ? 'good' : 'bad');
+  const diff = v => ((v - t) * 100 >= 0 ? '+' : '−') + Math.abs((v - t) * 100).toFixed(1) + ' pts vs ' + state.t + '% promised';
+  setTile('tOverall', 'tOverallNote', pct(a.overall), cls(a.overall), diff(a.overall));
+  setTile('tUri', 'tUriNote', pct(a.uri), cls(a.uri), diff(a.uri));
+  setTile('tWorst', 'tWorstNote', pct(a.covFrac[a.worst]), cls(a.covFrac[a.worst]), monthLabel(months[a.worst]));
+  $('tWidth').textContent = gw(a.width) + ' GW';
+  $('targetOut').textContent = state.t + '%';
+  drawA(a, b); drawB(a); drawC2(a);
+}
+
+/* ---------- controls ---------- */
+$('target').addEventListener('input', e => { state.t = +e.target.value; render(); });
+function setMode(mode) {
+  state.mode = mode;
+  $('modeStatic').setAttribute('aria-pressed', mode === 'static');
+  $('modeRecal').setAttribute('aria-pressed', mode === 'recal');
+  $('win').disabled = mode === 'static';
+  render();
+}
+$('modeStatic').addEventListener('click', () => setMode('static'));
+$('modeRecal').addEventListener('click', () => setMode('recal'));
+$('win').addEventListener('change', e => { state.W = +e.target.value; render(); });
+$('prevM').addEventListener('click', () => { state.sel = Math.max(0, state.sel - 1); render(); });
+$('nextM').addEventListener('click', () => { state.sel = Math.min(months.length - 1, state.sel + 1); render(); });
+document.querySelectorAll('[data-jump]').forEach(btn => btn.addEventListener('click', () => {
+  const [y, m] = btn.dataset.jump.split('-').map(Number);
+  const i = months.findIndex(x => x.y === y && x.m === m);
+  if (i >= 0) { state.sel = i; render(); }
+}));
+
+drawC1();
+render();
+</script>
